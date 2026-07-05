@@ -1,28 +1,80 @@
-#include <gui/SurfaceComposerClient.h>
-#include <gui/SurfaceControl.h>
-#include <gui/Surface.h>
-#include <ui/DisplayInfo.h>
-#include <ui/PixelFormat.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <linux/input.h>
-#include <linux/uinput.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
-#include <cmath>
+#include <sys/ioctl.h>
+#include <sys/system_properties.h>
+#include <dlfcn.h>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <cmath>
 
 #include "imgui.h"
 
-static EGLDisplay display = EGL_NO_DISPLAY;
-static EGLSurface surface = EGL_NO_SURFACE;
-static EGLContext context = EGL_NO_CONTEXT;
-static int input_fd = -1;
-static int screen_width = 0;
-static int screen_height = 0;
+namespace
+{
+    using android_String8_ctor = void (*)(void *, const char *);
+    using android_String8_dtor = void (*)(void *);
+    using android_RefBase_incStrong = void (*)(void *, const void *);
+    using android_RefBase_decStrong = void (*)(void *, const void *);
+    using android_SurfaceComposerClient_ctor = void (*)(void *);
+    using android_SurfaceComposerClient_initCheck = int (*)(void *);
+    using android_SurfaceComposerClient_createSurface = void *(*)(void *, void *, uint32_t, uint32_t, int32_t, uint32_t, const void *, int32_t, int32_t);
+    using android_SurfaceControl_getSurface = void *(*)(void *);
+    using android_Transaction_ctor = void (*)(void *);
+    using android_Transaction_dtor = void (*)(void *);
+    using android_Transaction_setLayer = void *(*)(void *, const void *, int32_t);
+    using android_Transaction_setPosition = void *(*)(void *, const void *, float, float);
+    using android_Transaction_show = void *(*)(void *, const void *);
+    using android_Transaction_apply = int (*)(void *, bool);
 
-static const char *vertex_shader_source = R"(
+    struct android_sp
+    {
+        void *m_ptr;
+        android_sp() : m_ptr(nullptr) {}
+        void assign(void *ptr, android_RefBase_incStrong inc, android_RefBase_decStrong dec)
+        {
+            if (ptr)
+                inc(ptr, nullptr);
+            if (m_ptr)
+                dec(m_ptr, nullptr);
+            m_ptr = ptr;
+        }
+        ~android_sp() = default;
+    };
+
+    void *g_libgui = nullptr;
+    void *g_libutils = nullptr;
+    android_String8_ctor String8_ctor = nullptr;
+    android_String8_dtor String8_dtor = nullptr;
+    android_RefBase_incStrong RefBase_incStrong = nullptr;
+    android_RefBase_decStrong RefBase_decStrong = nullptr;
+    android_SurfaceComposerClient_ctor SCC_ctor = nullptr;
+    android_SurfaceComposerClient_initCheck SCC_initCheck = nullptr;
+    android_SurfaceComposerClient_createSurface SCC_createSurface = nullptr;
+    android_SurfaceControl_getSurface SC_getSurface = nullptr;
+    android_Transaction_ctor Transaction_ctor = nullptr;
+    android_Transaction_dtor Transaction_dtor = nullptr;
+    android_Transaction_setLayer Transaction_setLayer = nullptr;
+    android_Transaction_setPosition Transaction_setPosition = nullptr;
+    android_Transaction_show Transaction_show = nullptr;
+    android_Transaction_apply Transaction_apply = nullptr;
+
+    EGLDisplay egl_display = EGL_NO_DISPLAY;
+    EGLSurface egl_surface = EGL_NO_SURFACE;
+    EGLContext egl_context = EGL_NO_CONTEXT;
+    int g_screen_w = 0;
+    int g_screen_h = 0;
+    int g_input_fd = -1;
+
+    GLuint shader_prog = 0;
+    GLuint vbo = 0;
+    GLuint ibo = 0;
+
+    const char *vertex_src = R"(
 attribute vec2 pos;
 attribute vec2 uv;
 attribute vec4 color;
@@ -36,7 +88,7 @@ void main() {
 }
 )";
 
-static const char *fragment_shader_source = R"(
+    const char *fragment_src = R"(
 precision mediump float;
 varying vec2 frag_uv;
 varying vec4 frag_color;
@@ -46,296 +98,337 @@ void main() {
 }
 )";
 
-static GLuint shader_program = 0;
-static GLuint vbo_handle = 0;
-static GLuint elements_handle = 0;
-
-static bool init_egl(android::sp<android::SurfaceComposerClient> &client,
-                     android::sp<android::SurfaceControl> &control,
-                     android::sp<android::Surface> &surface_obj)
-{
-    client = new android::SurfaceComposerClient();
-    if (client->initCheck() != android::NO_ERROR)
-        return false;
-
-    android::DisplayInfo dinfo;
-    android::sp<android::IBinder> dtoken = android::SurfaceComposerClient::getBuiltInDisplay(
-        android::ISurfaceComposer::eDisplayIdMain);
-    if (client->getDisplayInfo(dtoken, &dinfo) != android::NO_ERROR)
-        return false;
-    screen_width = dinfo.w;
-    screen_height = dinfo.h;
-
-    control = client->createSurface(
-        android::String8("ImguiOverlay"),
-        screen_width,
-        screen_height,
-        android::PIXEL_FORMAT_RGBA_8888,
-        android::ISurfaceComposerClient::eOpaque | android::ISurfaceComposerClient::eHidden);
-    if (!control.get())
-        return false;
-
-    android::SurfaceComposerClient::Transaction{}
-        .setLayer(control, 0x7FFFFFFF)
-        .setPosition(control, 0, 0)
-        .show(control)
-        .apply();
-
-    surface_obj = control->getSurface();
-    if (!surface_obj.get())
-        return false;
-
-    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (display == EGL_NO_DISPLAY)
-        return false;
-    if (!eglInitialize(display, nullptr, nullptr))
-        return false;
-
-    EGLint attribs[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_ALPHA_SIZE, 8,
-        EGL_NONE};
-    EGLConfig config;
-    EGLint num_configs;
-    if (!eglChooseConfig(display, attribs, &config, 1, &num_configs))
-        return false;
-    if (num_configs < 1)
-        return false;
-
-    context = eglCreateContext(display, config, EGL_NO_CONTEXT,
-                               new EGLint[3]{EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE});
-    if (context == EGL_NO_CONTEXT)
-        return false;
-
-    surface = eglCreateWindowSurface(display, config, surface_obj.get(), nullptr);
-    if (surface == EGL_NO_SURFACE)
-        return false;
-
-    if (!eglMakeCurrent(display, surface, surface, context))
-        return false;
-    return true;
-}
-
-static GLuint compile_shader(GLenum type, const char *source)
-{
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
-    GLint status;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
-    if (!status)
+    bool load_symbols()
     {
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
-}
+        g_libgui = dlopen("libgui.so", RTLD_NOW);
+        g_libutils = dlopen("libutils.so", RTLD_NOW);
+        if (!g_libgui || !g_libutils)
+            return false;
 
-static bool init_graphics()
-{
-    GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex_shader_source);
-    GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
-    if (!vs || !fs)
-        return false;
+        String8_ctor = (android_String8_ctor)dlsym(g_libutils, "_ZN7android7String8C1EPKc");
+        String8_dtor = (android_String8_dtor)dlsym(g_libutils, "_ZN7android7String8D1Ev");
+        RefBase_incStrong = (android_RefBase_incStrong)dlsym(g_libutils, "_ZNK7android7RefBase9incStrongEPKv");
+        RefBase_decStrong = (android_RefBase_decStrong)dlsym(g_libutils, "_ZNK7android7RefBase9decStrongEPKv");
+        if (!String8_ctor || !String8_dtor || !RefBase_incStrong || !RefBase_decStrong)
+            return false;
 
-    shader_program = glCreateProgram();
-    glAttachShader(shader_program, vs);
-    glAttachShader(shader_program, fs);
-    glLinkProgram(shader_program);
-    GLint status;
-    glGetProgramiv(shader_program, GL_LINK_STATUS, &status);
-    glDeleteShader(vs);
-    glDeleteShader(fs);
-    if (!status)
-        return false;
+        SCC_ctor = (android_SurfaceComposerClient_ctor)dlsym(g_libgui, "_ZN7android20SurfaceComposerClientC1Ev");
+        SCC_initCheck = (android_SurfaceComposerClient_initCheck)dlsym(g_libgui, "_ZNK7android20SurfaceComposerClient9initCheckEv");
+        SC_getSurface = (android_SurfaceControl_getSurface)dlsym(g_libgui, "_ZNK7android14SurfaceControl10getSurfaceEv");
+        Transaction_ctor = (android_Transaction_ctor)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11TransactionC1Ev");
+        Transaction_dtor = (android_Transaction_dtor)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11TransactionD1Ev");
+        Transaction_setLayer = (android_Transaction_setLayer)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11Transaction8setLayerERKNS_2spINS_14SurfaceControlEEEi");
+        Transaction_setPosition = (android_Transaction_setPosition)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11Transaction11setPositionERKNS_2spINS_14SurfaceControlEEEff");
+        Transaction_show = (android_Transaction_show)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11Transaction4showERKNS_2spINS_14SurfaceControlEEE");
+        Transaction_apply = (android_Transaction_apply)dlsym(g_libgui, "_ZN7android20SurfaceComposerClient11Transaction5applyEb");
+        if (!SCC_ctor || !SCC_initCheck || !SC_getSurface || !Transaction_ctor || !Transaction_dtor ||
+            !Transaction_setLayer || !Transaction_setPosition || !Transaction_show || !Transaction_apply)
+            return false;
 
-    glGenBuffers(1, &vbo_handle);
-    glGenBuffers(1, &elements_handle);
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
-    io.DisplaySize = ImVec2((float)screen_width, (float)screen_height);
-    io.DeltaTime = 1.0f / 60.0f;
-    io.IniFilename = nullptr;
-    io.LogFilename = nullptr;
-
-    unsigned char *pixels;
-    int width, height;
-    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-    GLuint font_tex;
-    glGenTextures(1, &font_tex);
-    glBindTexture(GL_TEXTURE_2D, font_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    io.Fonts->TexID = (ImTextureID)(intptr_t)font_tex;
-
-    return true;
-}
-
-static void draw_frame()
-{
-    ImGuiIO &io = ImGui::GetIO();
-    io.DisplaySize = ImVec2((float)screen_width, (float)screen_height);
-
-    ImGui::NewFrame();
-    ImGui::Begin("Overlay", nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
-    ImGui::Text("Hello World");
-    ImGui::End();
-    ImGui::Render();
-    ImDrawData *draw_data = ImGui::GetDrawData();
-
-    glViewport(0, 0, screen_width, screen_height);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    if (draw_data->Valid)
-    {
-        float L = draw_data->DisplayPos.x;
-        float R = draw_data->DisplayPos.x + draw_data->DisplaySize.x;
-        float T = draw_data->DisplayPos.y;
-        float B = draw_data->DisplayPos.y + draw_data->DisplaySize.y;
-        const float ortho_projection[4][4] = {
-            {2.0f / (R - L), 0.0f, 0.0f, 0.0f},
-            {0.0f, 2.0f / (T - B), 0.0f, 0.0f},
-            {0.0f, 0.0f, -1.0f, 0.0f},
-            {(R + L) / (L - R), (T + B) / (B - T), 0.0f, 1.0f}};
-
-        glUseProgram(shader_program);
-        glUniformMatrix4fv(glGetUniformLocation(shader_program, "proj"), 1, GL_FALSE, &ortho_projection[0][0]);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)draw_data->Fonts->TexID);
-        glUniform1i(glGetUniformLocation(shader_program, "tex"), 0);
-
-        glEnable(GL_BLEND);
-        glBlendEquation(GL_FUNC_ADD);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-        glEnable(GL_SCISSOR_TEST);
-
-        for (int n = 0; n < draw_data->CmdListsCount; ++n)
+        char sdk_ver[PROP_VALUE_MAX] = {0};
+        __system_property_get("ro.build.version.sdk", sdk_ver);
+        int sdk = atoi(sdk_ver);
+        void *sym = nullptr;
+        if (sdk <= 30)
         {
-            const ImDrawList *cmd_list = draw_data->CmdLists[n];
-            const ImDrawVert *vtx_buffer = cmd_list->VtxBuffer.Data;
-            const ImDrawIdx *idx_buffer = cmd_list->IdxBuffer.Data;
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo_handle);
-            glBufferData(GL_ARRAY_BUFFER, cmd_list->VtxBuffer.Size * sizeof(ImDrawVert), vtx_buffer, GL_STREAM_DRAW);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elements_handle);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx), idx_buffer, GL_STREAM_DRAW);
-
-            GLint pos_loc = glGetAttribLocation(shader_program, "pos");
-            GLint uv_loc = glGetAttribLocation(shader_program, "uv");
-            GLint col_loc = glGetAttribLocation(shader_program, "color");
-
-            glEnableVertexAttribArray(pos_loc);
-            glVertexAttribPointer(pos_loc, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, pos));
-            glEnableVertexAttribArray(uv_loc);
-            glVertexAttribPointer(uv_loc, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, uv));
-            glEnableVertexAttribArray(col_loc);
-            glVertexAttribPointer(col_loc, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, col));
-
-            for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; ++cmd_i)
+            sym = dlsym(g_libgui, "_ZN7android20SurfaceComposerClient13createSurfaceERKNS_7String8EjjiiRKNS_2spINS_7IBinderEEEii");
+        }
+        else
+        {
+            sym = dlsym(g_libgui, "_ZN7android20SurfaceComposerClient13createSurfaceERKNS_7String8EjjiiRKNS_2spINS_7IBinderEEENS_13LayerMetadataEPj");
+            if (!sym)
             {
-                const ImDrawCmd *cmd = &cmd_list->CmdBuffer[cmd_i];
-                if (cmd->UserCallback)
-                    continue;
-                glScissor((GLint)cmd->ClipRect.x, (GLint)(screen_height - cmd->ClipRect.w),
-                          (GLsizei)(cmd->ClipRect.z - cmd->ClipRect.x),
-                          (GLsizei)(cmd->ClipRect.w - cmd->ClipRect.y));
-                glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, GL_UNSIGNED_SHORT, (void *)(cmd->IdxOffset * sizeof(ImDrawIdx)));
+                sym = dlsym(g_libgui, "_ZN7android20SurfaceComposerClient13createSurfaceERKNS_7String8EjjiiRKNS_2spINS_7IBinderEEENS_13LayerMetadataEiPj");
             }
         }
-
-        glDisable(GL_SCISSOR_TEST);
-        glDisable(GL_BLEND);
+        if (!sym)
+            return false;
+        SCC_createSurface = (android_SurfaceComposerClient_createSurface)sym;
+        return true;
     }
 
-    eglSwapBuffers(display, surface);
-}
+    bool get_screen_size()
+    {
+        FILE *f = fopen("/sys/class/graphics/fb0/virtual_size", "r");
+        if (!f)
+            f = fopen("/sys/class/graphics/fb1/virtual_size", "r");
+        if (!f)
+            return false;
+        int w = 0, h = 0;
+        if (fscanf(f, "%d,%d", &w, &h) != 2)
+        {
+            fclose(f);
+            return false;
+        }
+        fclose(f);
+        if (w <= 0 || h <= 0)
+            return false;
+        g_screen_w = w;
+        g_screen_h = h;
+        return true;
+    }
 
-static int find_touch_device()
-{
-    DIR *dir = opendir("/dev/input");
-    if (!dir)
+    int find_touch_fd()
+    {
+        DIR *d = opendir("/dev/input");
+        if (!d)
+            return -1;
+        dirent *ent;
+        while ((ent = readdir(d)))
+        {
+            if (strncmp(ent->d_name, "event", 5) != 0)
+                continue;
+            char path[256];
+            snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
+            int fd = open(path, O_RDONLY | O_NONBLOCK);
+            if (fd < 0)
+                continue;
+            unsigned long absbits = 0;
+            if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(absbits)), &absbits) < 0)
+            {
+                close(fd);
+                continue;
+            }
+            bool mt_x = absbits & (1 << ABS_MT_POSITION_X);
+            bool mt_y = absbits & (1 << ABS_MT_POSITION_Y);
+            if (mt_x && mt_y)
+            {
+                closedir(d);
+                return fd;
+            }
+            close(fd);
+        }
+        closedir(d);
         return -1;
-    int fd = -1;
-    dirent *ent;
-    while ((ent = readdir(dir)))
-    {
-        if (strncmp(ent->d_name, "event", 5) != 0)
-            continue;
-        char path[256];
-        snprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
-        int tmp = open(path, O_RDONLY | O_NONBLOCK);
-        if (tmp < 0)
-            continue;
-        unsigned long absbits = 0;
-        if (ioctl(tmp, EVIOCGBIT(EV_ABS, sizeof(absbits)), &absbits) < 0)
-        {
-            close(tmp);
-            continue;
-        }
-        bool has_mt_x = (absbits & (1 << ABS_MT_POSITION_X)) != 0;
-        bool has_mt_y = (absbits & (1 << ABS_MT_POSITION_Y)) != 0;
-        if (has_mt_x && has_mt_y)
-        {
-            fd = tmp;
-            break;
-        }
-        close(tmp);
     }
-    closedir(dir);
-    return fd;
-}
 
-static void process_input()
-{
-    if (input_fd < 0)
-        return;
-    ImGuiIO &io = ImGui::GetIO();
-    struct input_event ev;
-    while (read(input_fd, &ev, sizeof(ev)) == sizeof(ev))
+    GLuint compile_shader(GLenum type, const char *src)
     {
-        if (ev.type == EV_ABS)
+        GLuint s = glCreateShader(type);
+        glShaderSource(s, 1, &src, nullptr);
+        glCompileShader(s);
+        GLint st = 0;
+        glGetShaderiv(s, GL_COMPILE_STATUS, &st);
+        if (!st)
         {
-            if (ev.code == ABS_MT_POSITION_X)
-            {
-                io.MousePos.x = ev.value * screen_width / 4096.0f;
-            }
-            else if (ev.code == ABS_MT_POSITION_Y)
-            {
-                io.MousePos.y = ev.value * screen_height / 4096.0f;
-            }
+            glDeleteShader(s);
+            return 0;
         }
-        else if (ev.type == EV_KEY && ev.code == BTN_TOUCH)
+        return s;
+    }
+
+    bool init_graphics()
+    {
+        GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex_src);
+        GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment_src);
+        if (!vs || !fs)
+            return false;
+        shader_prog = glCreateProgram();
+        glAttachShader(shader_prog, vs);
+        glAttachShader(shader_prog, fs);
+        glLinkProgram(shader_prog);
+        GLint st = 0;
+        glGetProgramiv(shader_prog, GL_LINK_STATUS, &st);
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        if (!st)
+            return false;
+
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ibo);
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        io.DisplaySize = ImVec2((float)g_screen_w, (float)g_screen_h);
+        io.DeltaTime = 1.0f / 60.0f;
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+
+        unsigned char *pixels;
+        int w, h;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+        GLuint tex;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        io.Fonts->TexID = (ImTextureID)(intptr_t)tex;
+        return true;
+    }
+
+    void draw_frame()
+    {
+        ImGuiIO &io = ImGui::GetIO();
+        io.DisplaySize = ImVec2((float)g_screen_w, (float)g_screen_h);
+
+        ImGui::NewFrame();
+        ImGui::Begin("Overlay", nullptr,
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("Hello World");
+        ImGui::End();
+        ImGui::Render();
+        ImDrawData *dd = ImGui::GetDrawData();
+
+        glViewport(0, 0, g_screen_w, g_screen_h);
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        if (dd->Valid)
         {
-            io.MouseDown[0] = (ev.value > 0);
+            float L = dd->DisplayPos.x;
+            float R = dd->DisplayPos.x + dd->DisplaySize.x;
+            float T = dd->DisplayPos.y;
+            float B = dd->DisplayPos.y + dd->DisplaySize.y;
+            float proj[4][4] = {
+                {2.0f / (R - L), 0, 0, 0},
+                {0, 2.0f / (T - B), 0, 0},
+                {0, 0, -1.0f, 0},
+                {(R + L) / (L - R), (T + B) / (B - T), 0, 1.0f}};
+
+            glUseProgram(shader_prog);
+            glUniformMatrix4fv(glGetUniformLocation(shader_prog, "proj"), 1, GL_FALSE, &proj[0][0]);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)dd->Fonts->TexID);
+            glUniform1i(glGetUniformLocation(shader_prog, "tex"), 0);
+            glEnable(GL_BLEND);
+            glBlendEquation(GL_FUNC_ADD);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
+            glEnable(GL_SCISSOR_TEST);
+
+            for (int n = 0; n < dd->CmdListsCount; ++n)
+            {
+                const ImDrawList *cl = dd->CmdLists[n];
+                glBindBuffer(GL_ARRAY_BUFFER, vbo);
+                glBufferData(GL_ARRAY_BUFFER, cl->VtxBuffer.Size * sizeof(ImDrawVert), cl->VtxBuffer.Data, GL_STREAM_DRAW);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, cl->IdxBuffer.Size * sizeof(ImDrawIdx), cl->IdxBuffer.Data, GL_STREAM_DRAW);
+
+                GLint pos = glGetAttribLocation(shader_prog, "pos");
+                GLint uv = glGetAttribLocation(shader_prog, "uv");
+                GLint col = glGetAttribLocation(shader_prog, "color");
+                glEnableVertexAttribArray(pos);
+                glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, pos));
+                glEnableVertexAttribArray(uv);
+                glVertexAttribPointer(uv, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, uv));
+                glEnableVertexAttribArray(col);
+                glVertexAttribPointer(col, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, col));
+
+                for (int i = 0; i < cl->CmdBuffer.Size; ++i)
+                {
+                    const ImDrawCmd *cmd = &cl->CmdBuffer[i];
+                    if (cmd->UserCallback)
+                        continue;
+                    glScissor((GLint)cmd->ClipRect.x, (GLint)(g_screen_h - cmd->ClipRect.w),
+                              (GLsizei)(cmd->ClipRect.z - cmd->ClipRect.x),
+                              (GLsizei)(cmd->ClipRect.w - cmd->ClipRect.y));
+                    glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, GL_UNSIGNED_SHORT, (void *)(cmd->IdxOffset * sizeof(ImDrawIdx)));
+                }
+            }
+            glDisable(GL_SCISSOR_TEST);
+            glDisable(GL_BLEND);
+        }
+        eglSwapBuffers(egl_display, egl_surface);
+    }
+
+    void process_input()
+    {
+        if (g_input_fd < 0)
+            return;
+        ImGuiIO &io = ImGui::GetIO();
+        input_event ev;
+        while (read(g_input_fd, &ev, sizeof(ev)) == sizeof(ev))
+        {
+            if (ev.type == EV_ABS)
+            {
+                if (ev.code == ABS_MT_POSITION_X)
+                    io.MousePos.x = ev.value * g_screen_w / 4096.0f;
+                else if (ev.code == ABS_MT_POSITION_Y)
+                    io.MousePos.y = ev.value * g_screen_h / 4096.0f;
+            }
+            else if (ev.type == EV_KEY && ev.code == BTN_TOUCH)
+            {
+                io.MouseDown[0] = (ev.value > 0);
+            }
         }
     }
-}
+
+} // namespace
 
 int main()
 {
-    android::sp<android::SurfaceComposerClient> client;
-    android::sp<android::SurfaceControl> control;
-    android::sp<android::Surface> surface_obj;
-
-    if (!init_egl(client, control, surface_obj))
+    if (!load_symbols())
         return 1;
+    if (!get_screen_size())
+        return 1;
+
+    char client_buf[256] = {0};
+    SCC_ctor(client_buf);
+    if (SCC_initCheck(client_buf) != 0)
+        return 1;
+
+    char name_buf[64];
+    String8_ctor(name_buf, "ImguiOverlay");
+
+    void *parent_null = nullptr;
+    android_sp surface_control_sp;
+    void *sc_ptr = SCC_createSurface(client_buf, name_buf, (uint32_t)g_screen_w, (uint32_t)g_screen_h, 1, 4, &parent_null, -1, -1);
+    surface_control_sp.assign(sc_ptr, RefBase_incStrong, RefBase_decStrong);
+    String8_dtor(name_buf);
+    if (!sc_ptr)
+        return 1;
+
+    void *surf_ptr = SC_getSurface(sc_ptr);
+    if (!surf_ptr)
+        return 1;
+
+    char trans_buf[512] = {0};
+    Transaction_ctor(trans_buf);
+
+    void *sc_sp_ptr = &sc_ptr;
+    Transaction_setLayer(trans_buf, sc_sp_ptr, 0x7FFFFFFF);
+    Transaction_setPosition(trans_buf, sc_sp_ptr, 0.0f, 0.0f);
+    Transaction_show(trans_buf, sc_sp_ptr);
+    Transaction_apply(trans_buf, false);
+    Transaction_dtor(trans_buf);
+
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_display == EGL_NO_DISPLAY)
+        return 1;
+    if (!eglInitialize(egl_display, nullptr, nullptr))
+        return 1;
+
+    EGLint config_attribs[] = {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
+        EGL_NONE};
+    EGLConfig cfg;
+    EGLint num;
+    if (!eglChooseConfig(egl_display, config_attribs, &cfg, 1, &num))
+        return 1;
+    if (num < 1)
+        return 1;
+
+    EGLint ctx_attribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
+    egl_context = eglCreateContext(egl_display, cfg, EGL_NO_CONTEXT, ctx_attribs);
+    if (egl_context == EGL_NO_CONTEXT)
+        return 1;
+
+    egl_surface = eglCreateWindowSurface(egl_display, cfg, (ANativeWindow *)surf_ptr, nullptr);
+    if (egl_surface == EGL_NO_SURFACE)
+        return 1;
+    if (!eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context))
+        return 1;
+
     if (!init_graphics())
         return 1;
-
-    input_fd = find_touch_device();
+    g_input_fd = find_touch_fd();
 
     while (true)
     {
@@ -344,10 +437,14 @@ int main()
         usleep(16666);
     }
 
-    if (input_fd >= 0)
-        close(input_fd);
-    eglDestroySurface(display, surface);
-    eglDestroyContext(display, context);
-    eglTerminate(display);
+    if (g_input_fd >= 0)
+        close(g_input_fd);
+    eglDestroySurface(egl_display, egl_surface);
+    eglDestroyContext(egl_display, egl_context);
+    eglTerminate(egl_display);
+    if (g_libgui)
+        dlclose(g_libgui);
+    if (g_libutils)
+        dlclose(g_libutils);
     return 0;
 }
