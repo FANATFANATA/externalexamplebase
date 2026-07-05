@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <cstddef>
 
 #include "imgui.h"
 
@@ -189,8 +190,8 @@ void main() {
                 close(fd);
                 continue;
             }
-            bool mt_x = absbits & (1 << ABS_MT_POSITION_X);
-            bool mt_y = absbits & (1 << ABS_MT_POSITION_Y);
+            bool mt_x = absbits & (1UL << ABS_MT_POSITION_X);
+            bool mt_y = absbits & (1UL << ABS_MT_POSITION_Y);
             if (mt_x && mt_y)
             {
                 closedir(d);
@@ -292,7 +293,7 @@ void main() {
             glUseProgram(shader_prog);
             glUniformMatrix4fv(glGetUniformLocation(shader_prog, "proj"), 1, GL_FALSE, &proj[0][0]);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)dd->Fonts->TexID);
+            glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)io.Fonts->TexID);
             glUniform1i(glGetUniformLocation(shader_prog, "tex"), 0);
             glEnable(GL_BLEND);
             glBlendEquation(GL_FUNC_ADD);
@@ -313,11 +314,11 @@ void main() {
                 GLint uv = glGetAttribLocation(shader_prog, "uv");
                 GLint col = glGetAttribLocation(shader_prog, "color");
                 glEnableVertexAttribArray(pos);
-                glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, pos));
+                glVertexAttribPointer(pos, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)offsetof(ImDrawVert, pos));
                 glEnableVertexAttribArray(uv);
-                glVertexAttribPointer(uv, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, uv));
+                glVertexAttribPointer(uv, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void *)offsetof(ImDrawVert, uv));
                 glEnableVertexAttribArray(col);
-                glVertexAttribPointer(col, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void *)IM_OFFSETOF(ImDrawVert, col));
+                glVertexAttribPointer(col, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void *)offsetof(ImDrawVert, col));
 
                 for (int i = 0; i < cl->CmdBuffer.Size; ++i)
                 {
