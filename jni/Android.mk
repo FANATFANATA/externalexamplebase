@@ -8,6 +8,7 @@ LOCAL_SRC_FILES := imgui/imgui.cpp \
                    imgui/imgui_widgets.cpp \
                    imgui/backends/imgui_impl_opengl3.cpp \
                    imgui/backends/imgui_impl_android.cpp
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/imgui
 LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/imgui
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti
 include $(BUILD_STATIC_LIBRARY)
