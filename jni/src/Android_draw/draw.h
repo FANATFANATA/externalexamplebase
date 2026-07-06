@@ -6,8 +6,8 @@
 #include <GLES3/gl3.h>
 #include "imgui.h"
 #include "imgui_internal.h"
-#include "imgui_impl_opengl3.h"
-#include "imgui_impl_android.h"
+#include "backends/imgui_impl_opengl3.h"
+#include "backends/imgui_impl_android.h"
 #include "native_surface/ANativeWindowCreator.h"
 
 bool init_egl(uint32_t _screen_x, uint32_t _screen_y, bool log);

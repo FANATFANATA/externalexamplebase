@@ -1,5 +1,3 @@
-// jni/src/Android_draw/draw.cpp
-
 #include "draw.h"
 
 ANativeWindow *native_window = nullptr;
