@@ -5,15 +5,20 @@ LOCAL_MODULE := imgui
 LOCAL_SRC_FILES := imgui/imgui.cpp \
                    imgui/imgui_draw.cpp \
                    imgui/imgui_tables.cpp \
-                   imgui/imgui_widgets.cpp
+                   imgui/imgui_widgets.cpp \
+                   imgui/backends/imgui_impl_opengl3.cpp \
+                   imgui/backends/imgui_impl_android.cpp
 LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/imgui
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := example.sh
-LOCAL_SRC_FILES := src/main.cpp
-LOCAL_CPPFLAGS := -std=c++17
+LOCAL_SRC_FILES := src/main.cpp \
+                   src/Android_draw/draw.cpp \
+                   src/Android_touch/Touch.cpp
+LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti
+LOCAL_CFLAGS := -fvisibility=hidden
 LOCAL_STATIC_LIBRARIES := imgui
-LOCAL_LDLIBS := -lEGL -lGLESv2 -ldl -llog
+LOCAL_LDLIBS := -lEGL -lGLESv2 -ldl -llog -landroid
 include $(BUILD_EXECUTABLE)
