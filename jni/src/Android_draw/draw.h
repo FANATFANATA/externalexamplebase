@@ -3,7 +3,10 @@
 
 #include <android/native_window.h>
 #include <EGL/egl.h>
-#include <GLES3/gl3.h>
+#include <GLES2/gl2.h>
+
+#define IMGUI_IMPL_OPENGL_ES2
+
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "backends/imgui_impl_opengl3.h"

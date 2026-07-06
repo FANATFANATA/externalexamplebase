@@ -36,15 +36,10 @@ bool init_egl(uint32_t _screen_x, uint32_t _screen_y, bool log)
     eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &eglFormat);
     ANativeWindow_setBuffersGeometry(native_window, 0, 0, eglFormat);
 
-    EGLint ctxAttribs3[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
-    EGLint ctxAttribs2[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
-    context = eglCreateContext(display, config, EGL_NO_CONTEXT, ctxAttribs3);
+    EGLint ctxAttribs[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
+    context = eglCreateContext(display, config, EGL_NO_CONTEXT, ctxAttribs);
     if (context == EGL_NO_CONTEXT)
-    {
-        context = eglCreateContext(display, config, EGL_NO_CONTEXT, ctxAttribs2);
-        if (context == EGL_NO_CONTEXT)
-            return false;
-    }
+        return false;
 
     surface = eglCreateWindowSurface(display, config, native_window, nullptr);
     if (surface == EGL_NO_SURFACE)
@@ -65,16 +60,7 @@ bool ImGui_init()
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
     ImGui_ImplAndroid_Init(native_window);
-
-    const char *glsl_version = "#version 300 es";
-    if (!eglMakeCurrent(display, surface, surface, context))
-        return false;
-    GLint majorVersion = 0;
-    glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
-    if (majorVersion < 3)
-        glsl_version = "#version 100";
-
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplOpenGL3_Init("#version 100");
 
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = nullptr;
