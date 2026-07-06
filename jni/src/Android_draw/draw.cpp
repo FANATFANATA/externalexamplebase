@@ -96,7 +96,7 @@ bool initGUI_draw(uint32_t _screen_x, uint32_t _screen_y, bool log)
 void drawBegin()
 {
     ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplAndroid_NewFrame(native_window_screen_x, native_window_screen_y);
+    ImGui_ImplAndroid_NewFrame();
     ImGui::NewFrame();
 }
 
