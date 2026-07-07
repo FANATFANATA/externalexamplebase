@@ -20,9 +20,14 @@ add_executable(example.sh
     src/main.cpp
     src/Android_draw/draw.cpp
     src/Android_touch/Touch.cpp
+    src/memory/memory.cpp
+    src/memory/read.cpp
+    src/memory/write.cpp
 )
 
 set_target_properties(example.sh PROPERTIES SUFFIX "")
+
+target_include_directories(example.sh PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_options(example.sh PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=c++17 -fno-exceptions -fno-rtti>)
 

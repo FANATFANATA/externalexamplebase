@@ -17,7 +17,11 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := example.sh
 LOCAL_SRC_FILES := src/main.cpp \
                    src/Android_draw/draw.cpp \
-                   src/Android_touch/Touch.cpp
+                   src/Android_touch/Touch.cpp \
+                   src/memory/memory.cpp \
+                   src/memory/read.cpp \
+                   src/memory/write.cpp
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/src
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti -DIMGUI_IMPL_OPENGL_ES2
 LOCAL_CFLAGS := -fvisibility=hidden
 LOCAL_STATIC_LIBRARIES := imgui
