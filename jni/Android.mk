@@ -20,7 +20,9 @@ LOCAL_SRC_FILES := src/main.cpp \
                    src/Android_touch/Touch.cpp \
                    src/memory/memory.cpp \
                    src/memory/read.cpp \
-                   src/memory/write.cpp
+                   src/memory/write.cpp \
+                   src/watermark/watermark.cpp \
+                   src/menu/menu.cpp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/src
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti -DIMGUI_IMPL_OPENGL_ES2
 LOCAL_CFLAGS := -fvisibility=hidden

@@ -1,5 +1,7 @@
 #include "Android_draw/draw.h"
 #include "Android_touch/Touch.hpp"
+#include "watermark/watermark.h"
+#include "menu/menu.h"
 #include <csignal>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -124,6 +126,10 @@ int main()
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)dispInfo.width, (float)dispInfo.height);
 
+    menu::ApplyStyle();
+
+    bool menu_visible = false;
+
     while (g_running)
     {
         if (access("/data/local/tmp/stop_overlay", F_OK) == 0)
@@ -142,11 +148,8 @@ int main()
 
         drawBegin();
 
-        ImGui::Begin("Overlay", nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
-                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::Text("Hello World");
-        ImGui::End();
+        watermark::DrawWatermark(menu_visible);
+        menu::ShowMenu(&menu_visible);
 
         drawEnd();
     }

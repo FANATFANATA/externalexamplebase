@@ -23,6 +23,8 @@ add_executable(example.sh
     src/memory/memory.cpp
     src/memory/read.cpp
     src/memory/write.cpp
+    src/watermark/watermark.cpp
+    src/menu/menu.cpp
 )
 
 set_target_properties(example.sh PROPERTIES SUFFIX "")
