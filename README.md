@@ -1,12 +1,13 @@
-# External Example Base
+# Sdeeb
 
 External root чит для standoff 2 на C++23.
 
 ## Стек
 
 - C++23
-- Android NDK (r27d)
+- Android NDK r27d
 - ImGui (Dear ImGui)
+- CMake
 
 ## Roadmap
 
@@ -17,7 +18,7 @@ External root чит для standoff 2 на C++23.
 - [x] Интеграция ImGui и базовая обработка сенсорного ввода.
 - [x] Работа с игрой (запуск, проверка запуска, получение PID игры и т.д.).
 - [x] Проверка root.
-- [x] logcat логи.
+- [x] Logcat логи.
 - [x] Реализация модуля безопасного чтения/записи памяти процесса.
 - [ ] Карсивый интерфейс как у премиального зенина за 2к рублей.
 
@@ -47,9 +48,10 @@ External root чит для standoff 2 на C++23.
 
 ### Требования к окружению
 
-- android ndk r27d
-- root
-- standoff 2
+- Android NDK r27d
+- ROOT
+- Standoff 2
+- MT Manager
 
 ## Совместная разработка (Contribution)
 
