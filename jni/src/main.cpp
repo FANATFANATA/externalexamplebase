@@ -126,6 +126,9 @@ int main()
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)dispInfo.width, (float)dispInfo.height);
 
+    io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 16.0f);
+    io.FontDefault = io.Fonts->Fonts.back();
+
     menu::ApplyStyle();
 
     bool menu_visible = false;
