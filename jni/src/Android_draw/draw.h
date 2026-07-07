@@ -1,11 +1,8 @@
 #ifndef ANDROID_DRAW_H
 #define ANDROID_DRAW_H
 
-#include <android/native_window.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
-
-#define IMGUI_IMPL_OPENGL_ES2
 
 #include "imgui.h"
 #include "imgui_internal.h"
