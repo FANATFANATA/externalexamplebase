@@ -18,11 +18,11 @@ namespace watermark
         ImGuiIO &io = ImGui::GetIO();
         std::string text = "Sdeeb";
         if (config.showVersion)
-            text += " \xE2\x97\x8F 0.39.1";
+            text += " \xB7 0.39.1";
         if (config.showType)
-            text += " \xE2\x97\x8F External";
+            text += " \xB7 External";
         if (config.showFps)
-            text += " \xE2\x97\x8F " + std::to_string(static_cast<int>(io.Framerate)) + " FPS";
+            text += " \xB7 " + std::to_string(static_cast<int>(io.Framerate)) + " FPS";
 
         ImVec2 pos(10.0f, 10.0f);
         ImDrawList *dl = ImGui::GetForegroundDrawList();
