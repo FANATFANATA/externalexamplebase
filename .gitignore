@@ -2,3 +2,5 @@
 /libs
 /build.bat
 /.gigac*
+/build
+/.vscode
