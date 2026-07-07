@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Android arm64-v8a",
+    "cmakeSettings": {
+      "ANDROID_ABI": "arm64-v8a"
+    }
+  },
+  {
+    "name": "Android x86_64",
+    "cmakeSettings": {
+      "ANDROID_ABI": "x86_64"
+    }
+  }
+]

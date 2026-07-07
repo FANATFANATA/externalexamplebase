@@ -1,5 +1,3 @@
-// jni/src/main.cpp
-
 #include "Android_draw/draw.h"
 #include "Android_touch/Touch.hpp"
 #include <csignal>
@@ -66,8 +64,7 @@ int main()
         drawBegin();
 
         ImGui::Begin("Overlay", nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
                          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("Hello World");
         ImGui::End();

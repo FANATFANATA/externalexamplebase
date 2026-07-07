@@ -1,0 +1,11 @@
+{
+  "cmake.generator": "MinGW Makefiles",
+  "cmake.sourceDirectory": "${workspaceFolder}/jni",
+  "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}-${cmake.targetName}",
+  "cmake.configureArgs": [
+    "-DCMAKE_TOOLCHAIN_FILE=C:/android-ndk-r27d/build/cmake/android.toolchain.cmake",
+    "-DCMAKE_MAKE_PROGRAM=C:/android-ndk-r27d/prebuilt/windows-x86_64/bin/make.exe",
+    "-DANDROID_PLATFORM=android-21",
+    "-DANDROID_STL=c++_static"
+  ]
+}
