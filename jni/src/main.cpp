@@ -120,14 +120,11 @@ int main()
 
     if (!touch::init(dispInfo.width, dispInfo.height, dispInfo.orientation))
     {
-        LOGI("Touch input not available, overlay will be non-interactive");
+        LOGI("Touch input not available, overlay will be non interactive");
     }
 
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)dispInfo.width, (float)dispInfo.height);
-
-    io.Fonts->AddFontFromFileTTF("/system/fonts/Roboto-Regular.ttf", 16.0f);
-    io.FontDefault = io.Fonts->Fonts.back();
 
     menu::ApplyStyle();
 
