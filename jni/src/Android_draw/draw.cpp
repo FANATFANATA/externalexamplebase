@@ -59,13 +59,42 @@ bool ImGui_init()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
-    ImGui_ImplAndroid_Init(native_window);
-    ImGui_ImplOpenGL3_Init("#version 100");
 
     ImGuiIO &io = ImGui::GetIO();
     io.IniFilename = nullptr;
-    fontDefault = io.Fonts->AddFontDefault();
-    ImGui::GetStyle().ScaleAllSizes(3.0f);
+    static const ImWchar ranges[] = {0x0020, 0x00FF, 0x0100, 0x017F, 0x0400, 0x04FF, 0};
+    ImFontConfig font_config;
+    font_config.SizePixels = 42.0f;
+    font_config.OversampleH = 3;
+    font_config.OversampleV = 3;
+    font_config.PixelSnapH = true;
+    const char *font_path = "/system/fonts/Roboto-Regular.ttf";
+    FILE *f = fopen(font_path, "rb");
+    if (f)
+    {
+        fclose(f);
+        fontDefault = io.Fonts->AddFontFromFileTTF(font_path, 42.0f, &font_config, ranges);
+    }
+    else
+    {
+        font_path = "/system/fonts/DroidSans.ttf";
+        f = fopen(font_path, "rb");
+        if (f)
+        {
+            fclose(f);
+            fontDefault = io.Fonts->AddFontFromFileTTF(font_path, 42.0f, &font_config, ranges);
+        }
+    }
+    if (!fontDefault)
+    {
+        fontDefault = io.Fonts->AddFontDefault();
+    }
+    io.FontDefault = fontDefault;
+
+    ImGui_ImplAndroid_Init(native_window);
+    ImGui_ImplOpenGL3_Init("#version 100");
+
+    ImGui::GetStyle().ScaleAllSizes(1.0f);
     g_Initialized = true;
     return true;
 }
