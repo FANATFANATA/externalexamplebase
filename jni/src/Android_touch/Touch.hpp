@@ -1,12 +1,10 @@
-#ifndef TOUCH_HPP
-#define TOUCH_HPP
+#pragma once
 
 #include <cstdint>
-namespace touch
-{
-    bool init(int32_t screen_w, int32_t screen_h, uint8_t orientation);
-    void update(int32_t screen_w, int32_t screen_h, uint8_t orientation);
-    void updateOrientation(uint8_t orientation);
+
+namespace touch {
+    bool init(int32_t _screen_w, int32_t _screen_h, uint8_t _orientation);
+    void update(int32_t _screen_w, int32_t _screen_h, uint8_t _orientation);
+    void updateOrientation(uint8_t _orientation);
     void shutdown();
 }
-#endif

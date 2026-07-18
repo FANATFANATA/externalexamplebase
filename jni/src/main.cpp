@@ -2,17 +2,18 @@
 #include "Android_touch/Touch.hpp"
 #include "watermark/watermark.h"
 #include "menu/menu.h"
-#include "esp/esp.h"
-#include "sdk/sdk.hpp"
+#include "other/memory.hpp"
+#include "game/game.hpp"
+#include "game/math.hpp"
+#include "func/visuals.hpp"
+#include "protect/oxorany.hpp"
 #include <csignal>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <android/log.h>
 #include <imgui.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <signal.h>
 #include <chrono>
 #include <thread>
 
@@ -24,8 +25,6 @@ bool g_running = true;
 struct sigaction old_sa_int;
 struct sigaction old_sa_term;
 struct sigaction old_sa_quit;
-pid_t game_pid = -1;
-uint64_t game_assembly_base = 0;
 
 void signal_handler(int)
 {
@@ -39,56 +38,8 @@ void cleanup_signals()
     sigaction(SIGQUIT, &old_sa_quit, nullptr);
 }
 
-pid_t get_game_pid()
-{
-    FILE *fp = popen("su -c 'pidof com.axlebolt.standoff2'", "r");
-    if (!fp)
-        return -1;
-    char buf[64];
-    if (fgets(buf, sizeof(buf), fp))
-    {
-        pclose(fp);
-        return atoi(buf);
-    }
-    pclose(fp);
-    return -1;
-}
-
-bool start_game()
-{
-    LOGI("Starting game");
-    int ret = system("su -c 'am start -n com.axlebolt.standoff2/com.google.firebase.MessagingUnityPlayerActivity' 2>/dev/null");
-    if (ret != 0)
-    {
-        LOGE("Failed to start game");
-        return false;
-    }
-    return true;
-}
-
-bool ensure_game_running()
-{
-    game_pid = get_game_pid();
-    if (game_pid > 0)
-    {
-        LOGI("Game already running");
-        return true;
-    }
-    if (!start_game())
-        return false;
-    auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(15))
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        game_pid = get_game_pid();
-        if (game_pid > 0)
-        {
-            LOGI("Game started");
-            return true;
-        }
-    }
-    LOGE("Timeout waiting for game process");
-    return false;
+static void launch_standoff() {
+    system(oxorany("am start -n com.standoff/com.standoff.MainActivity"));
 }
 
 int main()
@@ -107,13 +58,9 @@ int main()
     sigaction(SIGTERM, &sa, &old_sa_term);
     sigaction(SIGQUIT, &sa, &old_sa_quit);
 
-    if (!ensure_game_running())
-    {
-        cleanup_signals();
-        return 1;
-    }
+    launch_standoff();
 
-    game_assembly_base = sdk::get_module_base(game_pid, "libil2cpp.so");
+    game::init();
 
     android::ANativeWindowCreator::DisplayInfo dispInfo = android::ANativeWindowCreator::GetDisplayInfo();
     if (!initGUI_draw(dispInfo.width, dispInfo.height, false))
@@ -122,6 +69,9 @@ int main()
         cleanup_signals();
         return 1;
     }
+
+    g_sw = (float)(dispInfo.width > dispInfo.height ? dispInfo.width : dispInfo.height);
+    g_sh = (float)(dispInfo.width < dispInfo.height ? dispInfo.width : dispInfo.height);
 
     if (!touch::init(dispInfo.width, dispInfo.height, dispInfo.orientation))
     {
@@ -144,20 +94,18 @@ int main()
             break;
         }
 
-        if (kill(game_pid, 0) != 0)
-        {
-            LOGI("Game process died, exiting");
-            g_running = false;
-            break;
-        }
-
         drawBegin();
 
-        esp::RenderEsp(game_pid, game_assembly_base, dispInfo.width, dispInfo.height);
+        if (game::valid() && proc::lib != 0) {
+            game::check_lib(get_player_manager());
+            visuals::draw();
+        }
+
         watermark::DrawWatermark(menu_visible);
         menu::ShowMenu(&menu_visible);
 
         drawEnd();
+        usleep(menu_visible ? 1500 : 4000);
     }
 
     shutdown();

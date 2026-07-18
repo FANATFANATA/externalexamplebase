@@ -19,6 +19,7 @@ void shutdown();
 
 extern ANativeWindow *native_window;
 extern ImFont *fontDefault;
+extern ImFont *espFont;
 extern bool g_Initialized;
 extern int native_window_screen_x;
 extern int native_window_screen_y;

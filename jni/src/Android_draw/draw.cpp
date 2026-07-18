@@ -9,6 +9,7 @@ bool g_Initialized = false;
 int native_window_screen_x = 0;
 int native_window_screen_y = 0;
 ImFont *fontDefault = nullptr;
+ImFont *espFont = nullptr;
 
 bool init_egl(uint32_t _screen_x, uint32_t _screen_y, bool log)
 {
@@ -90,6 +91,10 @@ bool ImGui_init()
         fontDefault = io.Fonts->AddFontDefault();
     }
     io.FontDefault = fontDefault;
+
+    font_config.SizePixels = 18.0f;
+    espFont = io.Fonts->AddFontFromFileTTF(font_path, 18.0f, &font_config, ranges);
+    if (!espFont) espFont = fontDefault;
 
     ImGui_ImplAndroid_Init(native_window);
     ImGui_ImplOpenGL3_Init("#version 100");

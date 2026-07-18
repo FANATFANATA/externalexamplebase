@@ -20,13 +20,10 @@ add_executable(example.sh
     src/main.cpp
     src/Android_draw/draw.cpp
     src/Android_touch/Touch.cpp
-    src/memory/memory.cpp
-    src/memory/read.cpp
-    src/memory/write.cpp
-    src/watermark/watermark.cpp
+    src/func/visuals.cpp
+    src/protect/oxorany.cpp
     src/menu/menu.cpp
-    src/sdk/sdk.cpp
-    src/esp/esp.cpp
+    src/watermark/watermark.cpp
 )
 
 set_target_properties(example.sh PROPERTIES SUFFIX "")
