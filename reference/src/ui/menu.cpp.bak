@@ -1,0 +1,467 @@
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include "menu.hpp"
+#include "bar.hpp"
+#include "cfg.hpp"
+#include "theme/theme.hpp"
+#include "widgets/widgets.hpp"
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "Android_draw/draw.h"
+#include <cmath>
+#include <ctime>
+#include <cstdlib>
+
+namespace ui::menu {
+    using namespace style;
+    using namespace widgets;
+
+    static float ma = 0.f;
+    static int tab = 0;
+    static int stab = 0;
+    static bool drag = false;
+    static ImVec2 doff = ImVec2(0, 0);
+    static float scr_tgt = 0.f;
+    static float scr_cur = 0.f;
+    static float ta = 1.f;
+    static bool tsw = false;
+    static int ttab = 0;
+    static int tstab = 0;
+
+    static float mw = 1020.f;
+    static float mh = 660.f;
+    static float sw = 190.f;
+    static float hh = 52.f;
+    static float fh = 38.f;
+    static float sth = 50.f;
+
+    static const char* tabs[] = {"Visuals", "Settings"};
+    static constexpr int tc = sizeof(tabs) / sizeof(tabs[0]);
+
+    static const char* vstabs[] = {"ESP", "Other"};
+    static constexpr int vstc = sizeof(vstabs) / sizeof(vstabs[0]);
+
+    static float lrp(float a, float b, float t) { return a + (b - a) * t; }
+
+    static void shadow(ImVec2 p, ImVec2 s, float a) {
+        if (a < 0.01f) return;
+        ImDrawList* bg = ImGui::GetBackgroundDrawList();
+        bg->AddRectFilled(ImVec2(p.x - 3.f, p.y - 3.f), ImVec2(p.x + s.x + 3.f, p.y + s.y + 3.f), IM_COL32(0, 0, 0, (int)(50 * a)), 8.f);
+        bg->AddRectFilled(ImVec2(p.x - 6.f, p.y - 6.f), ImVec2(p.x + s.x + 6.f, p.y + s.y + 6.f), IM_COL32(0, 0, 0, (int)(35 * a)), 10.f);
+        bg->AddRectFilled(ImVec2(p.x - 10.f, p.y - 10.f), ImVec2(p.x + s.x + 10.f, p.y + s.y + 10.f), IM_COL32(0, 0, 0, (int)(20 * a)), 12.f);
+        bg->AddRectFilled(ImVec2(p.x - 15.f, p.y - 15.f), ImVec2(p.x + s.x + 15.f, p.y + s.y + 15.f), IM_COL32(0, 0, 0, (int)(10 * a)), 15.f);
+    }
+
+    static void esp_tab(float a) {
+        checkbox("Box", &cfg::esp::box, a);
+        separator(a);
+        checkbox("Name", &cfg::esp::name, a);
+        separator(a);
+        checkbox("Health bar", &cfg::esp::health, a);
+        separator(a);
+        checkbox("Distance", &cfg::esp::distance, a);
+        separator(a);
+        combo("Box type", &cfg::esp::box_type, {"Full", "Corner"}, a);
+        separator(a);
+        slider("Box rounding", &cfg::esp::box_rounding, 0.f, 10.f, a, "%.0f");
+        separator(a);
+        colorpick("Box color", &cfg::esp::box_col, a);
+        separator(a);
+        colorpick("Name color", &cfg::esp::name_col, a);
+        separator(a);
+        colorpick("Health color", &cfg::esp::health_col, a);
+        separator(a);
+        colorpick("Distance color", &cfg::esp::distance_col, a);
+    }
+
+    static void other_tab(float a) {
+        if (a < 0.01f) return;
+
+        ImGuiWindow* w = ImGui::GetCurrentWindow();
+        ImDrawList* dl = w->DrawList;
+        ImVec2 p = w->DC.CursorPos;
+        float ww = content_w > 0 ? content_w : ImGui::GetContentRegionAvail().x;
+
+        float h = 60.f * S;
+
+        dl->AddRectFilled(p, ImVec2(p.x + ww, p.y + h), col(clr::panel, a));
+        dl->AddRect(p, ImVec2(p.x + ww, p.y + h), col(clr::border, a));
+
+        ImGui::PushFont(fontMedium);
+        const char* txt = "nothing here yet...";
+        ImVec2 tsz = ImGui::CalcTextSize(txt);
+        float tx = p.x + (ww - tsz.x) * 0.5f;
+        float ty = p.y + (h - tsz.y) * 0.5f;
+        dl->AddText(ImVec2(tx, ty), col(clr::text_dim, a), txt);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, h));
+    }
+
+    static void visuals_tab(float a) {
+        switch (stab) {
+            case 0: esp_tab(a); break;
+            case 1: other_tab(a); break;
+        }
+    }
+
+    static void settings_tab(float a) {
+        ImGuiWindow* w = ImGui::GetCurrentWindow();
+        ImDrawList* dl = w->DrawList;
+        ImVec2 p = w->DC.CursorPos;
+        float ww = content_w > 0 ? content_w : ImGui::GetContentRegionAvail().x;
+
+        float pad = 8.f * S;
+        float h = 26.f * S;
+        float gap = 4.f * S;
+
+        dl->AddRectFilled(p, ImVec2(p.x + ww, p.y + h), col(clr::panel, a));
+        dl->AddRect(p, ImVec2(p.x + ww, p.y + h), col(clr::border, a));
+
+        ImGui::PushFont(fontMedium);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Screen: %.0f x %.0f", g_sw, g_sh);
+        float ty = p.y + (h - fontMedium->FontSize) * 0.5f;
+        dl->AddText(ImVec2(p.x + pad, ty), col(clr::text, a), buf);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, h + gap));
+
+        ImVec2 p2(p.x, p.y + h + gap);
+        dl->AddRectFilled(p2, ImVec2(p2.x + ww, p2.y + h), col(clr::panel, a));
+        dl->AddRect(p2, ImVec2(p2.x + ww, p2.y + h), col(clr::border, a));
+
+        ImGui::PushFont(fontMedium);
+        snprintf(buf, sizeof(buf), "FPS: %.0f", ImGui::GetIO().Framerate);
+        dl->AddText(ImVec2(p2.x + pad, p2.y + (h - fontMedium->FontSize) * 0.5f), col(clr::text, a), buf);
+        ImGui::PopFont();
+
+        ImGui::Dummy(ImVec2(0, h + gap));
+
+        separator(a);
+        button("Exit", a, []() { exit(0); });
+    }
+
+    static void subtabs(ImDrawList* dl, ImVec2 amin, ImVec2 amax, float a) {
+        if (tab != 0) return;
+
+        float pad = 8.f;
+        float tw = (amax.x - amin.x - pad * 2) / vstc;
+
+        for (int i = 0; i < vstc; i++) {
+            float tx = amin.x + pad + i * tw;
+            float ty = amin.y + 4.f;
+            float w = tw - 4.f;
+            float h = sth - 8.f;
+
+            ImVec2 tmin(tx, ty);
+            ImVec2 tmax(tx + w, ty + h);
+
+            bool sel = (stab == i);
+            bool hov = ImGui::IsMouseHoveringRect(tmin, tmax);
+
+            float sa = anim("st_" + std::to_string(i), sel ? 1.f : 0.f, 14.f);
+            float ha = anim("sth_" + std::to_string(i), hov && !sel ? 0.4f : 0.f, 14.f);
+
+            if (sa > 0.01f) {
+                dl->AddRectFilled(tmin, tmax, col(clr::widget, sa * a));
+                dl->AddRect(tmin, tmax, col(clr::border_light, sa * a));
+                dl->AddLine(ImVec2(tmin.x + w * 0.2f, tmax.y), ImVec2(tmax.x - w * 0.2f, tmax.y), col(clr::accent, sa * a), 2.f);
+            } else if (ha > 0.01f) {
+                dl->AddRectFilled(tmin, tmax, col(clr::panel, ha * a));
+            }
+
+            ImVec4 tc = anim_col("stt_" + std::to_string(i), sel ? clr::accent_light : clr::text_dim, 14.f);
+
+            ImGui::PushFont(fontMedium);
+            ImVec2 tsz = ImGui::CalcTextSize(vstabs[i]);
+            float ttx = tx + (w - tsz.x) * 0.5f;
+            float tty = ty + (h - tsz.y) * 0.5f;
+            dl->AddText(ImVec2(ttx, tty), col(tc, a), vstabs[i]);
+            ImGui::PopFont();
+
+            if (hov && ImGui::IsMouseClicked(0) && !popup() && !tsw && stab != i) {
+                ttab = tab;
+                tstab = i;
+                tsw = true;
+            }
+        }
+    }
+
+    void render() {
+        bar::render();
+
+        float dt = ImGui::GetIO().DeltaTime;
+        ma = lrp(ma, bar::g_open ? 1.f : 0.f, ImClamp(12.f * dt, 0.f, 1.f));
+
+        if (ma > 0.01f) {
+            ImDrawList* bg = ImGui::GetBackgroundDrawList();
+            int da = (int)(200 * ma * bar::game_alpha());
+            bg->AddRectFilled(ImVec2(0, 0), ImVec2(g_sw, g_sh), IM_COL32(0, 0, 0, da));
+        }
+
+        if (ma < 0.01f) return;
+
+        tick();
+
+        if (tsw) {
+            ta = lrp(ta, 0.f, ImClamp(18.f * dt, 0.f, 1.f));
+            if (ta < 0.05f) {
+                tab = ttab;
+                stab = tstab;
+                tsw = false;
+                scr_tgt = 0.f;
+                scr_cur = 0.f;
+            }
+        } else {
+            ta = lrp(ta, 1.f, ImClamp(14.f * dt, 0.f, 1.f));
+        }
+
+        float ca = ma * ta;
+        content_alpha = 1.f;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ma);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+
+        ImVec2 wsz(mw, mh);
+        ImGui::SetNextWindowSize(wsz, ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2((g_sw - mw) * 0.5f, (g_sh - mh) * 0.5f), ImGuiCond_Once);
+
+        ImGuiWindowFlags wf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove;
+
+        if (ImGui::Begin("##m", nullptr, wf)) {
+            ImVec2 wp = ImGui::GetWindowPos();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            ImGuiIO& io = ImGui::GetIO();
+            ImVec2 mp = io.MousePos;
+
+            shadow(wp, wsz, ma);
+
+            dl->AddRectFilled(wp, ImVec2(wp.x + wsz.x, wp.y + wsz.y), col(clr::bg, ma));
+            dl->AddRect(wp, ImVec2(wp.x + wsz.x, wp.y + wsz.y), col(clr::border_dark, ma));
+            dl->AddRect(ImVec2(wp.x + 1, wp.y + 1), ImVec2(wp.x + wsz.x - 1, wp.y + wsz.y - 1), col(clr::border, ma));
+
+            dl->AddRectFilledMultiColor(ImVec2(wp.x + 2, wp.y + 2), ImVec2(wp.x + wsz.x - 2, wp.y + hh), col(clr::sidebar, ma), col(clr::sidebar, ma), col(clr::bg, ma), col(clr::bg, ma));
+            dl->AddLine(ImVec2(wp.x, wp.y + hh), ImVec2(wp.x + wsz.x, wp.y + hh), col(clr::border_dark, ma));
+            dl->AddLine(ImVec2(wp.x, wp.y + hh + 1), ImVec2(wp.x + wsz.x, wp.y + hh + 1), col(clr::border, ma));
+
+            ImGui::PushFont(fontBold);
+            dl->AddText(ImVec2(wp.x + 12, wp.y + hh * 0.5f - fontBold->FontSize * 0.5f), col(clr::accent_light, ma), "zalupa by denkiz");
+            ImGui::PopFont();
+
+            dl->AddLine(ImVec2(wp.x, wp.y + wsz.y - fh), ImVec2(wp.x + wsz.x, wp.y + wsz.y - fh), col(clr::border, ma));
+            dl->AddLine(ImVec2(wp.x, wp.y + wsz.y - fh - 1), ImVec2(wp.x + wsz.x, wp.y + wsz.y - fh - 1), col(clr::border_dark, ma));
+
+            ImGui::PushFont(fontDesc);
+            time_t now = time(0);
+            tm* ltm = localtime(&now);
+            char tb[32];
+            snprintf(tb, sizeof(tb), "%02d:%02d:%02d", ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+            dl->AddText(ImVec2(wp.x + 10, wp.y + wsz.y - fh + (fh - fontDesc->FontSize) * 0.5f), col(clr::text_dim, ma), "Time");
+            ImVec2 lsz = ImGui::CalcTextSize("Time ");
+            dl->AddText(ImVec2(wp.x + 10 + lsz.x, wp.y + wsz.y - fh + (fh - fontDesc->FontSize) * 0.5f), col(clr::accent, ma), tb);
+            ImGui::PopFont();
+
+            ImVec2 smin(wp.x + 2, wp.y + hh + 2);
+            ImVec2 smax(wp.x + sw, wp.y + wsz.y - fh);
+
+            dl->AddRectFilled(smin, smax, col(clr::sidebar, ma));
+            dl->AddLine(ImVec2(smax.x, smin.y), ImVec2(smax.x, smax.y), col(clr::border, ma));
+
+            float tsy = smin.y + 16;
+            float th = 50.f;
+            float tg = 6.f;
+            float tp = 16.f;
+
+            for (int i = 0; i < tc; i++) {
+                float ty = tsy + i * (th + tg);
+                float tx = smin.x + 6;
+                float tw = sw - 14;
+
+                ImVec2 tmin(tx, ty);
+                ImVec2 tmax(tx + tw, ty + th);
+
+                bool sel = (tab == i);
+                bool hov = ImGui::IsMouseHoveringRect(tmin, tmax);
+
+                float sa = anim("t_" + std::to_string(i), sel ? 1.f : 0.f, 14.f);
+                float ha = anim("th_" + std::to_string(i), hov && !sel ? 0.4f : 0.f, 14.f);
+
+                if (sa > 0.01f) {
+                    dl->AddRectFilled(tmin, tmax, col(clr::widget, sa * ma));
+                    dl->AddRect(tmin, tmax, col(clr::border_light, sa * ma * 0.5f));
+                    dl->AddRectFilledMultiColor(tmin, ImVec2(tmin.x + 3, tmax.y), col(clr::accent, sa * ma), col(clr::accent, 0.f), col(clr::accent, 0.f), col(clr::accent, sa * ma));
+                } else if (ha > 0.01f) {
+                    dl->AddRectFilled(tmin, tmax, col(clr::panel, ha * ma));
+                }
+
+                ImVec4 ttc = anim_col("tt_" + std::to_string(i), sel ? clr::accent_light : clr::text_dim, 14.f);
+
+                ImGui::PushFont(fontMedium);
+                float ny = ty + (th - fontMedium->FontSize) * 0.5f;
+                dl->AddText(ImVec2(tx + tp, ny), col(ttc, ma), tabs[i]);
+                ImGui::PopFont();
+
+                if (hov && ImGui::IsMouseClicked(0) && ma > 0.5f && !tsw) {
+                    if (!popup() && tab != i) {
+                        ttab = i;
+                        tstab = 0;
+                        tsw = true;
+                    }
+                    close();
+                }
+            }
+
+            float csx = wp.x + sw + 1;
+            float cex = wp.x + wsz.x - 2;
+
+            float hst = (tab == 0) ? 1.f : 0.f;
+            float sah = sth * hst;
+
+            ImVec2 stmin(csx, wp.y + hh + 2);
+            ImVec2 stmax(cex, stmin.y + sah);
+
+            if (tab == 0) {
+                dl->AddRectFilled(stmin, stmax, col(clr::subtab_bg, ma));
+                dl->AddLine(ImVec2(stmin.x, stmax.y), ImVec2(stmax.x, stmax.y), col(clr::border, ma));
+                subtabs(dl, stmin, stmax, ma);
+            }
+
+            float cp = 14.f;
+            float sbw = 20.f;
+            float sbg = 10.f;
+
+            content_w = cex - csx - cp * 2 - sbg - sbw;
+
+            float cw = content_w;
+            float csy = stmax.y + cp;
+            float ch = (wp.y + wsz.y - fh) - csy - cp;
+
+            ImVec2 cpos = ImVec2(csx + cp, csy);
+            ImVec2 cmax = ImVec2(cpos.x + cw, cpos.y + ch);
+
+            ImGui::SetCursorScreenPos(cpos);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ca);
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+
+            ImGui::PushClipRect(cpos, cmax, true);
+
+            content_alpha = ta;
+
+            ImGui::BeginChild("##c", ImVec2(cw, ch), false, ImGuiWindowFlags_NoScrollbar);
+
+            float sm = ImGui::GetScrollMaxY();
+
+            bool chov = ImGui::IsMouseHoveringRect(cpos, cmax);
+            if (chov && !popup()) {
+                float wh = io.MouseWheel;
+                if (wh != 0.f) scr_tgt -= wh * 60.f;
+            }
+            scr_tgt = ImClamp(scr_tgt, 0.f, ImMax(sm, 0.f));
+
+            scr_cur = lrp(scr_cur, scr_tgt, ImClamp(16.f * dt, 0.f, 1.f));
+            if (fabsf(scr_cur - scr_tgt) < 0.5f) scr_cur = scr_tgt;
+
+            ImGui::SetScrollY(scr_cur);
+
+            switch (tab) {
+                case 0: visuals_tab(ma); break;
+                case 1: settings_tab(ma); break;
+            }
+
+            sm = ImGui::GetScrollMaxY();
+            scr_tgt = ImClamp(scr_tgt, 0.f, ImMax(sm, 0.f));
+
+            ImGui::EndChild();
+            ImGui::PopClipRect();
+
+            ImGui::PopStyleColor(1);
+            ImGui::PopStyleVar(2);
+
+            float sbx = cmax.x + sbg;
+            float sby = cpos.y;
+            float sbh = ch;
+
+            if (sm > 0.f) {
+                dl->AddRectFilledMultiColor(ImVec2(sbx + 2, sby + 2), ImVec2(sbx + sbw - 2, sby + sbh - 2), col(clr::bg_two, ma), col(clr::bg_two, ma), col(clr::bg, ma), col(clr::bg, ma));
+                dl->AddRect(ImVec2(sbx, sby), ImVec2(sbx + sbw, sby + sbh), col(clr::border, ma));
+                dl->AddRect(ImVec2(sbx + 1, sby + 1), ImVec2(sbx + sbw - 1, sby + sbh - 1), col(clr::border_dark, ma));
+
+                float sr = ch / (ch + sm);
+                float gh = sbh * sr;
+                gh = ImMax(gh, 40.f);
+
+                float sn = scr_tgt / sm;
+                float gy = sby + (sbh - gh) * sn;
+
+                dl->AddRectFilledMultiColor(ImVec2(sbx + 2, gy + 2), ImVec2(sbx + sbw - 2, gy + gh - 2), col(clr::accent, ma), col(clr::accent, ma), col(clr::accent_dark, ma), col(clr::accent_dark, ma));
+
+                float sb_hitbox_pad = 30.f;
+                ImRect sbr(ImVec2(sbx - sb_hitbox_pad, sby), ImVec2(sbx + sbw + 10.f, sby + sbh));
+                bool sbhov = ImGui::IsMouseHoveringRect(sbr.Min, sbr.Max);
+                static bool sbd = false;
+                static float sbds = 0.f;
+
+                if (sbhov && ImGui::IsMouseClicked(0) && !popup()) {
+                    sbd = true;
+                    sbds = mp.y - gy;
+                }
+                if (!ImGui::IsMouseDown(0)) sbd = false;
+
+                if (sbd && sm > 0.f) {
+                    float ngy = mp.y - sbds;
+                    float nn = (ngy - sby) / (sbh - gh);
+                    nn = ImClamp(nn, 0.f, 1.f);
+                    scr_tgt = nn * sm;
+                    scr_cur = scr_tgt;
+                }
+            }
+
+            bool inm = (mp.x >= wp.x && mp.x <= wp.x + wsz.x && mp.y >= wp.y && mp.y <= wp.y + wsz.y);
+
+            if (inm && !popup() && ImGui::IsMouseClicked(0)) {
+                bool ont = false;
+                for (int i = 0; i < tc; i++) {
+                    float ty = tsy + i * (th + tg);
+                    float tx = smin.x + 6;
+                    float tw = sw - 14;
+                    if (mp.x >= tx && mp.x <= tx + tw && mp.y >= ty && mp.y <= ty + th) {
+                        ont = true;
+                        break;
+                    }
+                }
+
+                bool inst = (tab == 0 && mp.y >= stmin.y && mp.y <= stmax.y && mp.x >= stmin.x);
+                bool inca = (mp.x >= cpos.x && mp.x <= cmax.x && mp.y >= cpos.y && mp.y <= cmax.y);
+                bool insb = (mp.x >= sbx - 30.f && mp.x <= sbx + sbw + 10.f && mp.y >= sby && mp.y <= sby + sbh);
+
+                if (!ont && !inca && !insb && !inst) {
+                    drag = true;
+                    doff = ImVec2(mp.x - wp.x, mp.y - wp.y);
+                }
+            }
+
+            if (drag) {
+                if (ImGui::IsMouseDown(0)) {
+                    ImVec2 np = ImVec2(mp.x - doff.x, mp.y - doff.y);
+                    np.x = ImClamp(np.x, 0.f, g_sw - wsz.x);
+                    np.y = ImClamp(np.y, 0.f, g_sh - wsz.y);
+                    ImGui::SetWindowPos("##m", np);
+                } else {
+                    drag = false;
+                }
+            }
+
+            if (popup()) drag = false;
+        }
+        ImGui::End();
+        ImGui::PopStyleColor(1);
+        ImGui::PopStyleVar(4);
+
+        popups();
+    }
+}
