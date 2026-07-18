@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "../other/memory.hpp"
 #include "../protect/oxorany.hpp"
 #include <stdint.h>

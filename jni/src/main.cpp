@@ -97,8 +97,11 @@ int main()
         drawBegin();
 
         if (game::valid() && proc::lib != 0) {
-            game::check_lib(get_player_manager());
-            visuals::draw();
+            uint64_t pm = get_player_manager();
+            if (pm) {
+                game::check_lib(pm);
+                visuals::draw();
+            }
         }
 
         watermark::DrawWatermark(menu_visible);

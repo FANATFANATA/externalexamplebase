@@ -10,17 +10,13 @@
 #include <vector>
 #include "imgui.h"
 
-#define TOUCH_MODE 2
-
 namespace touch {
     struct input {
         int fd;
         bool canBeUsed{false};
         input_absinfo absX{}, absY{};
         float absXMultiplier{0}, absYMultiplier{0};
-#if TOUCH_MODE == 2
         bool trackingIDPresent{false};
-#endif
 
         input(const char *_path, int32_t _screen_w, int32_t _screen_h) {
             fd = open(_path, O_RDWR);
@@ -32,10 +28,8 @@ namespace touch {
                 return;
             }
 
-#if TOUCH_MODE == 2
             input_absinfo absTrackingID{};
             trackingIDPresent = ioctl(fd, EVIOCGABS(ABS_MT_TRACKING_ID), &absTrackingID) != -1 && absTrackingID.minimum <= 0 && absTrackingID.maximum > 0;
-#endif
 
             calculateMultipliers(_screen_w, _screen_h);
         }
@@ -75,17 +69,10 @@ namespace touch {
             for (long j = 0; j < event_readed_count; j++) {
                 auto &event = events[j];
                 if (event.type == EV_ABS) {
-#if TOUCH_MODE == 2
                     if (_input.trackingIDPresent && event.code == ABS_MT_TRACKING_ID) {
                         isDown = event.value != -1;
                         continue;
                     }
-#elif TOUCH_MODE == 0
-                    if (event.code == ABS_MT_TRACKING_ID) {
-                        isDown = event.value != -1;
-                        continue;
-                    }
-#endif
                     if (event.code == ABS_MT_POSITION_X) {
                         x = (float) event.value;
                         continue;
@@ -96,13 +83,7 @@ namespace touch {
                     }
                 }
                 if (event.code == SYN_REPORT && imgui_io) {
-#if TOUCH_MODE == 2
                     imgui_io->MouseDown[0] = _input.trackingIDPresent ? isDown : event_readed_count > 2;
-#elif TOUCH_MODE == 0
-                    imgui_io->MouseDown[0] = isDown;
-#else
-                    imgui_io->MouseDown[0] = event_readed_count > 2;
-#endif
                     if (imgui_io->MouseDown[0]) {
                         switch (orientation) {
                             case 1:

@@ -17,7 +17,7 @@ namespace menu
     static const float ANIM_DURATION = 0.25f;
     static const float TAB_FADE_DURATION = 0.15f;
 
-    static const char *tabs[] = {"ESP", "Aim", "Skins", "Misc", "Config", "About us"};
+    static const char* const tabs[] = {"ESP", "Aim", "Skins", "Misc", "Config", "About us"};
     static const int tab_count = sizeof(tabs) / sizeof(tabs[0]);
 
     void ApplyStyle()

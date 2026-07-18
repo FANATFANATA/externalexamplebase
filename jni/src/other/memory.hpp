@@ -11,7 +11,6 @@ namespace proc {
     inline int pid = -1;
     inline uint64_t lib = 0;
     inline int fd = -1;
-    inline int pm = -1;
 }
 
 namespace sys {
@@ -330,31 +329,6 @@ inline uint64_t get_lib() {
     return bs;
 }
 
-inline void init_mem() {
-    if (proc::pid <= 0) return;
-    if (proc::pm >= 0) sys::close(proc::pm);
-    proc::pm = -1;
-
-    char mp[64];
-    int ps = 0;
-
-    const char* ps_ = oxorany("/proc/");
-    while (*ps_) mp[ps++] = *ps_++;
-
-    int pid = proc::pid;
-    char pds[16];
-    int pl = 0;
-    int tm = pid;
-    while (tm > 0) { pds[pl++] = '0' + (tm % 10); tm /= 10; }
-    for (int i = pl - 1; i >= 0; i--) mp[ps++] = pds[i];
-
-    const char* ms = oxorany("/pagemap");
-    while (*ms) mp[ps++] = *ms++;
-    mp[ps] = '\0';
-
-    proc::pm = sys::openat(AT_FDCWD, mp, O_RDONLY);
-}
-
 namespace game {
     inline int tick = 0;
     inline int fail_count = 0;
@@ -368,7 +342,6 @@ namespace game {
 
         if (proc::lib == 0) {
             proc::lib = get_lib();
-            if (proc::lib != 0) init_mem();
             return false;
         }
 
@@ -376,7 +349,6 @@ namespace game {
         if (tick >= 60) {
             int p = get_pid();
             if (p != proc::pid) {
-                if (proc::pm >= 0) { sys::close(proc::pm); proc::pm = -1; }
                 proc::pid = p;
                 proc::lib = 0;
                 tick = 0;
@@ -397,8 +369,6 @@ namespace game {
                     uint64_t lib = get_lib();
                     if (lib != 0 && lib != proc::lib) {
                         proc::lib = lib;
-                        if (proc::pm >= 0) { sys::close(proc::pm); proc::pm = -1; }
-                        init_mem();
                     }
                     fail_count = 3;
                 }
@@ -413,7 +383,6 @@ namespace game {
         proc::pid = get_pid();
         if (proc::pid > 0) {
             proc::lib = get_lib();
-            if (proc::lib != 0) init_mem();
         }
     }
 }
