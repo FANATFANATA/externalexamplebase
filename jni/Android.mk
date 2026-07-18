@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := imgui
 LOCAL_SRC_FILES := imgui/imgui.cpp \
@@ -11,6 +12,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/imgui
 LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/imgui
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti -DIMGUI_IMPL_OPENGL_ES2
 include $(BUILD_STATIC_LIBRARY)
+
 include $(CLEAR_VARS)
 LOCAL_MODULE := example.sh
 LOCAL_SRC_FILES := src/main.cpp \
@@ -20,7 +22,9 @@ LOCAL_SRC_FILES := src/main.cpp \
                    src/memory/read.cpp \
                    src/memory/write.cpp \
                    src/watermark/watermark.cpp \
-                   src/menu/menu.cpp
+                   src/menu/menu.cpp \
+                   src/sdk/sdk.cpp \
+                   src/esp/esp.cpp
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/src
 LOCAL_CPPFLAGS := -std=c++17 -fno-exceptions -fno-rtti -DIMGUI_IMPL_OPENGL_ES2
 LOCAL_CFLAGS := -fvisibility=hidden

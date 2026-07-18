@@ -2,6 +2,8 @@
 #include "Android_touch/Touch.hpp"
 #include "watermark/watermark.h"
 #include "menu/menu.h"
+#include "esp/esp.h"
+#include "sdk/sdk.hpp"
 #include <csignal>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -23,6 +25,7 @@ struct sigaction old_sa_int;
 struct sigaction old_sa_term;
 struct sigaction old_sa_quit;
 pid_t game_pid = -1;
+uint64_t game_assembly_base = 0;
 
 void signal_handler(int)
 {
@@ -110,6 +113,8 @@ int main()
         return 1;
     }
 
+    game_assembly_base = sdk::get_module_base(game_pid, "libil2cpp.so");
+
     android::ANativeWindowCreator::DisplayInfo dispInfo = android::ANativeWindowCreator::GetDisplayInfo();
     if (!initGUI_draw(dispInfo.width, dispInfo.height, false))
     {
@@ -120,7 +125,7 @@ int main()
 
     if (!touch::init(dispInfo.width, dispInfo.height, dispInfo.orientation))
     {
-        LOGI("Touch input not available, overlay will be non interactive");
+        LOGI("Touch input not available, overlay will be non-interactive");
     }
 
     ImGuiIO &io = ImGui::GetIO();
@@ -148,6 +153,7 @@ int main()
 
         drawBegin();
 
+        esp::RenderEsp(game_pid, game_assembly_base, dispInfo.width, dispInfo.height);
         watermark::DrawWatermark(menu_visible);
         menu::ShowMenu(&menu_visible);
 

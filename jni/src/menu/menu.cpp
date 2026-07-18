@@ -1,5 +1,6 @@
 #include "menu.h"
 #include "watermark/watermark.h"
+#include "esp/esp.h"
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -19,66 +20,16 @@ namespace menu
     static const char *tabs[] = {"ESP", "Aim", "Skins", "Misc", "Config", "About us"};
     static const int tab_count = sizeof(tabs) / sizeof(tabs[0]);
 
-    static bool CustomCheckbox(const char *label, bool *v)
-    {
-        ImGuiWindow *window = ImGui::GetCurrentWindow();
-        if (window->SkipItems)
-            return false;
-        ImGuiContext &g = *GImGui;
-        const ImGuiStyle &style = g.Style;
-        const ImGuiID id = window->GetID(label);
-        const ImVec2 label_size = ImGui::CalcTextSize(label, NULL, true);
-        const float square_sz = ImGui::GetFrameHeight();
-        const ImVec2 pos = window->DC.CursorPos;
-        const ImRect total_bb(pos, ImVec2(pos.x + square_sz + style.ItemInnerSpacing.x + label_size.x, pos.y + square_sz));
-        ImGui::ItemSize(total_bb, style.FramePadding.y);
-        if (!ImGui::ItemAdd(total_bb, id))
-            return false;
-
-        bool hovered, held;
-        bool pressed = ImGui::ButtonBehavior(total_bb, id, &hovered, &held);
-        if (pressed)
-            *v = !*v;
-
-        ImU32 col_bg;
-        if (*v)
-            col_bg = ImGui::ColorConvertFloat4ToU32(ImVec4(0.6078f, 0.6588f, 0.6706f, 1.0f));
-        else
-            col_bg = ImGui::ColorConvertFloat4ToU32(ImVec4(0.1451f, 0.2157f, 0.2706f, 1.0f));
-        if (hovered)
-            col_bg = ImGui::ColorConvertFloat4ToU32(ImVec4(0.2902f, 0.3608f, 0.4157f, 1.0f));
-
-        const ImRect check_bb(pos, ImVec2(pos.x + square_sz, pos.y + square_sz));
-        window->DrawList->AddRectFilled(check_bb.Min, check_bb.Max, col_bg, style.FrameRounding);
-
-        if (*v)
-        {
-            const float pad = 2.0f;
-            const float thickness = 2.0f;
-            ImVec2 check_mark_bb_min(check_bb.Min.x + pad, check_bb.Min.y + pad);
-            ImVec2 check_mark_bb_max(check_bb.Max.x - pad, check_bb.Max.y - pad);
-            ImVec2 a(check_mark_bb_min.x, check_mark_bb_min.y + (check_mark_bb_max.y - check_mark_bb_min.y) * 0.5f);
-            ImVec2 b(check_mark_bb_min.x + (check_mark_bb_max.x - check_mark_bb_min.x) * 0.4f, check_mark_bb_max.y);
-            ImVec2 c(check_mark_bb_max.x, check_mark_bb_min.y);
-            window->DrawList->AddLine(a, b, IM_COL32(0xCC, 0xD0, 0xCF, 0xFF), thickness);
-            window->DrawList->AddLine(b, c, IM_COL32(0xCC, 0xD0, 0xCF, 0xFF), thickness);
-        }
-
-        ImGui::SameLine();
-        ImGui::RenderText(ImVec2(check_bb.Max.x + style.ItemInnerSpacing.x, check_bb.Min.y), label);
-        return pressed;
-    }
-
     void ApplyStyle()
     {
         ImGuiStyle &s = ImGui::GetStyle();
-        s.WindowRounding = 16.0f;
-        s.ChildRounding = 12.0f;
-        s.FrameRounding = 10.0f;
-        s.GrabRounding = 10.0f;
-        s.PopupRounding = 10.0f;
-        s.ScrollbarRounding = 14.0f;
-        s.TabRounding = 12.0f;
+        s.WindowRounding = 14.0f;
+        s.ChildRounding = 10.0f;
+        s.FrameRounding = 8.0f;
+        s.GrabRounding = 8.0f;
+        s.PopupRounding = 8.0f;
+        s.ScrollbarRounding = 12.0f;
+        s.TabRounding = 10.0f;
         s.WindowBorderSize = 0.0f;
         s.FrameBorderSize = 0.0f;
         s.WindowPadding = ImVec2(12, 12);
@@ -174,7 +125,7 @@ namespace menu
                            border_col, 16.0f, ImDrawFlags_RoundCornersAll, 2.0f);
 
         ImGui::Columns(2, "menu_columns", false);
-        ImGui::SetColumnWidth(0, 220);
+        ImGui::SetColumnWidth(0, 180);
 
         ImVec4 tab_bg = ImVec4(0.1451f, 0.2157f, 0.2706f, 0.5f);
         ImVec4 tab_hovered = ImVec4(0.2902f, 0.3608f, 0.4157f, 0.7f);
@@ -247,10 +198,34 @@ namespace menu
         switch (current_tab)
         {
         case 0:
+        {
+            auto &cfg = esp::GetEspConfig();
+            ImGui::Text("ESP Settings");
+            ImGui::Separator();
+            ImGui::Checkbox("Box", &cfg.box);
+            ImGui::SameLine();
+            ImGui::Checkbox("Name", &cfg.name);
+            ImGui::SameLine();
+            ImGui::Checkbox("Health", &cfg.health);
+            ImGui::SameLine();
+            ImGui::Checkbox("Distance", &cfg.distance);
+            ImGui::SliderInt("Box Type", &cfg.box_type, 0, 1);
+            ImGui::SliderFloat("Box Rounding", &cfg.box_rounding, 0.0f, 10.0f);
+            ImGui::ColorEdit4("Box Color", &cfg.box_col.x);
+            ImGui::ColorEdit4("Health Color", &cfg.health_col.x);
+            ImGui::ColorEdit4("Name Color", &cfg.name_col.x);
+            ImGui::ColorEdit4("Distance Color", &cfg.distance_col.x);
+            break;
+        }
         case 1:
+        {
+            const char *msg = "Coming soon";
+            float text_width = ImGui::CalcTextSize(msg).x;
+            ImGui::SetCursorPosX(center_x - text_width * 0.5f);
+            ImGui::Text("%s", msg);
+            break;
+        }
         case 2:
-        case 4:
-        case 5:
         {
             const char *msg = "Coming soon";
             float text_width = ImGui::CalcTextSize(msg).x;
@@ -263,9 +238,25 @@ namespace menu
             auto &cfg = watermark::GetWatermarkConfig();
             ImGui::Text("Watermark");
             ImGui::Separator();
-            CustomCheckbox("Show version", &cfg.showVersion);
-            CustomCheckbox("Show type", &cfg.showType);
-            CustomCheckbox("Show FPS", &cfg.showFps);
+            ImGui::Checkbox("Show version", &cfg.showVersion);
+            ImGui::Checkbox("Show type", &cfg.showType);
+            ImGui::Checkbox("Show FPS", &cfg.showFps);
+            break;
+        }
+        case 4:
+        {
+            const char *msg = "Coming soon";
+            float text_width = ImGui::CalcTextSize(msg).x;
+            ImGui::SetCursorPosX(center_x - text_width * 0.5f);
+            ImGui::Text("%s", msg);
+            break;
+        }
+        case 5:
+        {
+            const char *msg = "Coming soon";
+            float text_width = ImGui::CalcTextSize(msg).x;
+            ImGui::SetCursorPosX(center_x - text_width * 0.5f);
+            ImGui::Text("%s", msg);
             break;
         }
         }

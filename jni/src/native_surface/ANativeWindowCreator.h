@@ -10,10 +10,7 @@
 #include <vector>
 
 #define ResolveMethod(ClassName, MethodName, Handle, MethodSignature)                                                              \
-    ClassName##__##MethodName = reinterpret_cast<decltype(ClassName##__##MethodName)>(symbolMethod.Find(Handle, MethodSignature)); \
-    if (nullptr == ClassName##__##MethodName)                                                                                      \
-    {                                                                                                                              \
-    }
+    ClassName##__##MethodName = reinterpret_cast<decltype(ClassName##__##MethodName)>(symbolMethod.Find(Handle, MethodSignature))
 
 namespace android
 {
